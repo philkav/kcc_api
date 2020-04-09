@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import requests
 from bs4 import BeautifulSoup as bs
+import json
 
 """
 
@@ -14,6 +15,16 @@ class Plan:
     def __init__(self, plan_id):
         self.plan_id = plan_id
         self.entries = list_files('planning', self.plan_id)
+        self.init_headers()
+
+    def init_headers(self):
+        data_url = f"http://webgeo.kildarecoco.ie/public/GetPlanningFileResult?id={self.plan_id}"
+        r = requests.get(data_url)
+        self.status_code = r.status_code
+        self.raw_data = r.content.decode()
+        self.header_data = json.loads(self.raw_data)
+        for k, v in self.header_data.items():
+            setattr(self, k, v)
 
 def get_html(catalog, planning_id):
     url = f"http://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx?catalog={catalog}&id={planning_id}"
