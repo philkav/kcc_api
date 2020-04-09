@@ -26,6 +26,9 @@ class Plan:
         for k, v in self.header_data.items():
             setattr(self, k, v)
 
+    def __str__(self):
+        return f"Plan_id: {self.plan_id}, Applicant: {self.ApplicantName}, Address: {' '.join(self.DevelopmentAddress)}, Status: {self.ApplicationStatus}, Files: {len(self.entries)}"
+
 def get_html(catalog, planning_id):
     url = f"http://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx?catalog={catalog}&id={planning_id}"
     r = requests.get(url)

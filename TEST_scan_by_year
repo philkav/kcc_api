@@ -1,0 +1,17 @@
+#!/usr/bin/env python3.8
+from sys import argv
+import Plan
+year = 20
+
+
+def show_year(year):
+    for i in range(0,500):
+        try:
+            p = Plan.Plan(str(year)+str(i))
+            print(p)
+        except:
+            print(f"No Plans found for {year}{i}")
+
+if __name__ == '__main__':
+    year = str(argv[1])
+    show_year(year)
