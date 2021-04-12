@@ -18,7 +18,7 @@ class Plan:
         self.init_headers()
 
     def init_headers(self):
-        data_url = f"http://webgeo.kildarecoco.ie/public/GetPlanningFileResult?id={self.plan_id}"
+        data_url = f"http://webgeo.kildarecoco.ie/planningenquiry/Public/GetPlanningFileResult?id={self.plan_id}"
         r = requests.get(data_url)
         self.status_code = r.status_code
         self.raw_data = r.content.decode()
