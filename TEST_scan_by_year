@@ -5,12 +5,16 @@ year = 20
 
 
 def show_year(year):
-    for i in range(0,500):
+    blanks = 0
+    blank_limit = 10
+    for i in range(0,2000):
+        if blanks >= blank_limit: break
         try:
             p = Plan.Plan(str(year)+str(i))
             print(p)
         except:
             print(f"No Plans found for {year}{i}")
+            blanks += 1
 
 if __name__ == '__main__':
     year = str(argv[1])

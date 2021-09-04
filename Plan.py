@@ -2,6 +2,7 @@
 import requests
 from bs4 import BeautifulSoup as bs
 import json
+import sys
 
 """
 
@@ -10,6 +11,41 @@ import json
 >>> x = Plan.Plan('20162')
 >>> print(json.dumps(x.__dict__, indent=4))
 """
+
+def search_by_address(search_term):
+    return search(address=search_term)
+
+def search_by_name(search_term):
+    return search(name=search_term)
+
+def search_by_description(search_term):
+    return search(description=search_term)
+
+def search(name="", address="", description=""):
+    """
+    Returns a list of Plan Objects
+    """
+    plans = []  
+    name = name.replace(' ','+')
+    address = address.replace(' ','+')
+    description = description.replace(' ','+')
+    Address_Search_URL = f"http://webgeo.kildarecoco.ie/planningenquiry/Public/GetPlanningFileNameAddressResult?name={name}&address={address}&devDesc={description}&startDate=&endDate="
+    r = requests.get(Address_Search_URL)
+    if r.status_code == 200:
+        try:
+            for item in r.json():
+                p = Plan(item['FileNumber'])
+                plans.append(p)
+        except json.decoder.JSONDecodeError:
+             content = json.loads(r.text)
+             for item in content:
+                 try:
+                     p = Plan(item['FileNumber'])
+                     plans.append(p)
+                 except:
+                     print(f"Couldn't load: {item}", file=sys.stderr)
+    return plans
+
 
 class Plan:
     def __init__(self, plan_id):
@@ -24,6 +60,10 @@ class Plan:
         self.raw_data = r.content.decode()
         self.header_data = json.loads(self.raw_data)
         for k, v in self.header_data.items():
+            try:
+                v = v.strip()
+            except:
+                pass
             setattr(self, k, v)
 
     def __str__(self):
