@@ -18,3 +18,14 @@ for p in Plan.search_by_address('westfield'):
     print(p)
 ```
 
+
+* Run from Command Line:
+```
+python ./kcc.py <ADDRESS>
+```
+
+-eg-
+
+````
+python ./kcc.py leixlip
+````
