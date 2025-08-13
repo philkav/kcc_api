@@ -4,17 +4,16 @@ API for requesting public data from Kildare County Council
 ## Howto
 * Instantiate a plan object:
 
-
 ```
-import Plan
-p = Plan.Plan('20162')
+import plan
+p = plan.KCCPlan('20162')
 ```
 
 * Search by address:
 
 ```
-import Plan
-for p in Plan.search_by_address('westfield'):
+import plan
+for p in plan.search(address='westfield'):
     print(p)
 ```
 
