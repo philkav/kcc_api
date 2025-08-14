@@ -121,7 +121,7 @@ class Attachment:
         raise KeyError
 
     def __str__(self):
-        return f"<Attachment: [{self.type.get('text', 'None')}: {self.comment.get('text', 'None')}] (link: {self.link})>"
+        return f"<Attachment: [{self.type.get('text', 'None')}: {self.comment.get('text', 'None')}] ({self.link})>"
 
 
 class KCCPlan:

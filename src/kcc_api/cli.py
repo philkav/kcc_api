@@ -34,8 +34,8 @@ def show_plan(plan_id):
         print(item)
 
 
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="kcc_api", description="Kildare CoCo planning CLI")
+def build_parser(prog) -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog=prog, description="Kildare CoCo planning CLI")
     p.add_argument(
         "-s", "--search", metavar="QUERY", help="Search by address or keyword"
     )
@@ -44,7 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser(prog="kcc")
+    args = parser.parse_args(argv)
 
     if args.search is not None:
         return show_search(args.search)
