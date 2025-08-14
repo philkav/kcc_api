@@ -37,14 +37,16 @@ usage: kcc_api [-h] [-s QUERY] [-p QUERY]
 Kildare CoCo planning CLI
 
 options:
-  -h, --help          show this help message and exit
-  -s, --search QUERY  Search by address or keyword
-  -p, --plan QUERY    Search by Plan ID
+  -h, --help              show this help message and exit
+  -n, --name QUERY        Search by Submitter Name
+  -a, --address QUERY     Search by Address
+  -d, --description QUERY Search by Description
+  -p, --plan QUERY        Search by Plan ID
 ```
 
 
 #### Perform Search on an address
-```➜  kcc_api git:(master) ✗ uv run kcc -s westfield
+```➜  kcc_api git:(master) ✗ uv run kcc -a westfield
 <KCCPlan: 20101 [Westfield, Green Lane, Leixlip, Co. Kildare.]>
 <KCCPlan: 18662 [The Court Westfield Green Lane, Leixlip Co. Kildare]>
 <KCCPlan: 19831 [Westfield,  Green Lane, Leixlip, Co. Kildare.]>
@@ -67,7 +69,7 @@ options:
     ...
 }
 <Attachment: [Comment: # Files] (link: None)>
-<Attachment: [ : 1] (link: https://idocsweb.kildarecoco.ie/iDocsWebDPSS/ViewFiles.aspx?docid=3197994&format=djvu)>
+<Attachment: [ : 1] (link: https://idocsweb.kildarecoco.ie/iDocsWebDPSS/ViewFiles.aspx?docid=3197994&format=djvu)>
 <Attachment: [Referrals and Criteria 28/04/2025: 1] (link: https://idocsweb.kildarecoco.ie/iDocsWebDPSS/ViewFiles.aspx?docid=3197995&format=djvu)>
 <Attachment: [Uisce Eireann: 1] (link: https://idocsweb.kildarecoco.ie/iDocsWebDPSS/ViewFiles.aspx?docid=3199652&format=djvu)>
 ...
