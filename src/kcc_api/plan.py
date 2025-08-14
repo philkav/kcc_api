@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import requests
+import json
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin
 
@@ -148,6 +149,9 @@ class KCCPlan:
         else:
             print(f"No attachments found for plan {str(self.plan_id)}")
             return None
+
+    def to_json(self):
+        return {"data": self.data, "attachments": [ x for x in self.attachments ]}
 
 
 class Search:

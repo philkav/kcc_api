@@ -26,12 +26,8 @@ def show_plan(plan_id):
     # Load the attachments (Makes another network request)
     x.fetch_attachments()
 
-    # Display the Plan Metadata
-    print(json.dumps(x.data, indent=4))
-
-    # Display the Plan Attachments
-    for item in x.attachments:
-        print(item)
+    # Display the Plan Metadata and attachments
+    print(json.dumps(x.to_json(), indent=4, default=str))
 
 
 def build_parser(prog) -> argparse.ArgumentParser:
