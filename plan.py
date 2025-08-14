@@ -1,6 +1,19 @@
 #!/usr/bin/python3
 import requests
 from bs4 import BeautifulSoup as bs
+from urllib.parse import urljoin
+
+
+class KCCURL:
+    ## Planning Enquiries
+    planning_file = (
+        "http://webgeo.kildarecoco.ie/planningenquiry/Public/GetPlanningFileResult"
+    )
+    address_search = "http://webgeo.kildarecoco.ie/planningenquiry/Public/GetPlanningFileNameAddressResult"
+
+    ## File Search
+    attachment_search = "https://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx"
+    attachment_filedir = "https://idocsweb.kildarecoco.ie/iDocsWebDPSS/"
 
 
 class Endpoint:
@@ -12,15 +25,20 @@ class Endpoint:
         self.headers = headers
         self.params = params
 
-    def make_request(self):
-        return requests.request(
+    @property
+    def request(self) -> requests.Request:
+        return requests.Request(
             method=self.method, url=self.url, headers=self.headers, params=self.params
-        )
+        ).prepare()
+
+    def make_request(self) -> requests.Response:
+        with requests.Session() as s:
+            return s.send(self.request)
 
 
 class AddressSearchEndpoint(Endpoint):
     def __init__(self, name: str, address: str, description: str):
-        self.url = "http://webgeo.kildarecoco.ie/planningenquiry/Public/GetPlanningFileNameAddressResult"
+        self.url = KCCURL.address_search
         super().__init__(
             self.url,
             params={
@@ -41,34 +59,24 @@ class PlanningAttachmentsEndpoint(Endpoint):
         self.params = {"catalog": self.catalog, "id": self.plan_id}
         self.headers = {"User-Agent": "Mozilla/5.0"}
 
-        self.url = "https://idocsweb.kildarecoco.ie/iDocsWebDPSS/listFiles.aspx"
+        self.url = KCCURL.attachment_search
         super().__init__(self.url, params=self.params, headers=self.headers)
 
 
 class PlanningFileEndpoint(Endpoint):
     def __init__(self, plan_id: int):
         self.plan_id = plan_id
-        self.url = (
-            "http://webgeo.kildarecoco.ie/planningenquiry/Public/GetPlanningFileResult"
-        )
-        self.attachments = None
-        super().__init__(self.url, params={"id": self.plan_id})
+        self.url = KCCURL.planning_file
 
-    def fetch_attachments(self):
-        plan_attachments_endpoint = PlanningAttachmentsEndpoint(self.plan_id)
-        plan_attachments_request = plan_attachments_endpoint.make_request()
-        if plan_attachments_request.ok:
-            raw_request_data = plan_attachments_request.text
-            self.attachments = AttachmentHTMLParser(raw_request_data)
-            return True
-        else:
-            print(f"No attachments found for plan {str(self.plan_id)}")
-            return None
+        super().__init__(self.url, params={"id": self.plan_id})
 
 
 class AttachmentHTMLParser:
     def __init__(self, content: str):
-        self.data = self._parsehtml(content)
+        self._data = self._parsehtml(content)
+
+    def __iter__(self):
+        return iter(self._data)
 
     def extract_text_and_link(self, block: str):
         text = block.get_text()
@@ -93,24 +101,35 @@ class AttachmentHTMLParser:
 
 class Attachment:
     def __init__(self, datadict: dict):
-        self.type = datadict["type"]
-        self.comment = datadict["comment"]
-        self.files = datadict["files"]
-        self.size = datadict["size"]
-        self.jpeg = datadict["jpeg"]
-        self.djvu = datadict["djvu"]
-        self.base_url = "https://idocsweb.kildarecoco.ie/iDocsWebDPSS/"
-        self.link = self.djvu.get("url", None)
-        self.link_url = self.base_url + self.link if self.link else None
+        self._datadict = datadict
+        self.base_url = KCCURL.attachment_filedir
+
+    @property
+    def link(self):
+        for media in ["djvu", "jpeg"]:
+            if media in list(self):
+                self._link = getattr(self, media).get("url", None)
+                return urljoin(self.base_url, self._link) if self._link else None
+        return None
+
+    def __iter__(self):
+        return iter(self._datadict.keys())
+
+    def __getattr__(self, k):
+        if k in self._datadict.keys():
+            return self._datadict.get(k)
+        raise KeyError
 
     def __str__(self):
-        return f"<Attachment: [{self.type.get('text', 'None')}: {self.comment.get('text', 'None')}] (link: {self.link_url})>"
+        return f"<Attachment: [{self.type.get('text', 'None')}: {self.comment.get('text', 'None')}] (link: {self.link})>"
 
 
 class KCCPlan:
     def __init__(self, plan_id: int):
-        self.endpoint = PlanningFileEndpoint(plan_id)
+        self.plan_id = plan_id
+        self.endpoint = PlanningFileEndpoint(self.plan_id)
         self.request = self.endpoint.make_request()
+        self.attachments = None
         if self.request.ok:
             self.data = self.request.json()
         else:
@@ -118,6 +137,21 @@ class KCCPlan:
 
     def __str__(self):
         return f"<KCCPlan: {self.data.get('FileNumber')} [{' '.join(self.data.get('DevelopmentAddress'))}]>"
+
+    def fetch_attachments(self):
+        plan_attachments_endpoint = PlanningAttachmentsEndpoint(self.plan_id)
+        plan_attachments_request = plan_attachments_endpoint.make_request()
+        if plan_attachments_request.ok:
+            raw_request_data = plan_attachments_request.text
+            self.attachments = AttachmentHTMLParser(raw_request_data)
+            return True
+        else:
+            print(f"No attachments found for plan {str(self.plan_id)}")
+            return None
+
+
+class Search:
+    pass
 
 
 def search(name: str = "", address: str = "", description: str = ""):
