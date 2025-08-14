@@ -1,7 +1,7 @@
 # kcc_api
 API for requesting public data from Kildare County Council
 
-## Howto
+## API Howto
 * Instantiate a plan object:
 
 ```
@@ -23,7 +23,8 @@ There are two options, search (-s) and plan (-p):
 
 
 #### Install it
-```➜  kcc_api git:(master) ✗ uv pip install -e .
+```
+➜  kcc_api git:(master) ✗ uv pip install -e .
 Audited 1 package in 17ms
 ```
 
