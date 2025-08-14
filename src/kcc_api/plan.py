@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 import requests
-import json
+from datetime import datetime
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin
 
@@ -27,7 +27,7 @@ class Endpoint:
         self.params = params
 
     @property
-    def request(self) -> requests.Request:
+    def request(self) -> requests.PreparedRequest:
         return requests.Request(
             method=self.method, url=self.url, headers=self.headers, params=self.params
         ).prepare()
@@ -36,6 +36,9 @@ class Endpoint:
         with requests.Session() as s:
             return s.send(self.request)
 
+    def sanitize(self, item: str):
+        return item.replace(' ', '+') if item else ""
+
 
 class AddressSearchEndpoint(Endpoint):
     def __init__(self, name: str, address: str, description: str):
@@ -43,9 +46,9 @@ class AddressSearchEndpoint(Endpoint):
         super().__init__(
             self.url,
             params={
-                "name": name,
-                "address": address,
-                "devDesc": description,
+                "name": self.sanitize(name),
+                "address": self.sanitize(address),
+                "devDesc": self.sanitize(description),
                 "startDate": "",
                 "endDate": "",
             },
@@ -136,8 +139,13 @@ class KCCPlan:
         else:
             self.data = None
 
+    def __getattr__(self, k):
+        if k in self.data:
+            return self.data[k]
+        raise KeyError
+
     def __str__(self):
-        return f"<KCCPlan: {self.data.get('FileNumber')} [{' '.join(self.data.get('DevelopmentAddress'))}]>"
+        return f"<KCCPlan: ({self.DateReceived}) [{self.data.get('FileNumber')}] {' '.join(self.DevelopmentAddress).strip()}>"
 
     def fetch_attachments(self):
         plan_attachments_endpoint = PlanningAttachmentsEndpoint(self.plan_id)
@@ -155,18 +163,23 @@ class KCCPlan:
 
 
 class Search:
-    pass
+    def __init__(self, name: str = None, address: str = None, description: str = None):
+        self.endpoint = AddressSearchEndpoint(name, address, description)
+        self._data = None
+        self._fetch()
 
+    def __iter__(self):
+        return iter(self._data)
 
-def search(name: str = "", address: str = "", description: str = ""):
-    """Returns a list of Plan Objects"""
-    name = name.replace(" ", "+")
-    address = address.replace(" ", "+")
-    description = description.replace(" ", "+")
+    def __len__(self):
+        return len(self._data)
 
-    address_search_endpoint = AddressSearchEndpoint(name, address, description)
-    request = address_search_endpoint.make_request()
-    if request.ok:
-        return [KCCPlan(p["FileNumber"]) for p in request.json()]
+    def _fetch(self):
+        """
+        This can be a little bit slow as it is fetching the data on the KCC server.
+        It's a single request from our point of view as the client
+        """
+        request = self.endpoint.make_request()
+        self._data = [KCCPlan(p["FileNumber"]) for p in request.json()]
+        self._data.sort(key=lambda obj: datetime.strptime(obj.DateReceived, "%d/%m/%Y"))
 
-    return None

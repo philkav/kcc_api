@@ -6,15 +6,15 @@ USAGE:
 
 """
 
-from .plan import KCCPlan, search
+from .plan import KCCPlan, Search
 from sys import argv, stderr
 import json
 import argparse
 
 
-def show_search(address):
-    ### Showcase the search function
-    for p in search(address=address):
+def show_search(address=None, name=None, description=None):
+    ### Showcase the search class
+    for p in Search(address=address, name=name, description=description):
         print(p)
 
 
@@ -32,25 +32,32 @@ def show_plan(plan_id):
 
 def build_parser(prog) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog=prog, description="Kildare CoCo planning CLI")
-    p.add_argument(
-        "-s", "--search", metavar="QUERY", help="Search by address or keyword"
-    )
+    p.add_argument("-n", "--name", metavar="QUERY", help="Search by Submitter Name")
+    p.add_argument("-a", "--address", metavar="QUERY", help="Search by Address")
+    p.add_argument("-d", "--description", metavar="QUERY", help="Search by Description")
     p.add_argument("-p", "--plan", metavar="QUERY", help="Search by Plan ID")
     return p
 
 
-def main(argv=None) -> int:
+def main(argv=None) -> int | None:
     parser = build_parser(prog="kcc")
     args = parser.parse_args(argv)
 
-    if args.search is not None:
-        return show_search(args.search)
 
+    # plan takes priority if provided
     if args.plan is not None:
         return show_plan(args.plan)
 
+    # gather any provided search fields into one call
+    search_kwargs = {
+        k: v for k in ("address", "name", "description")
+        if (v := getattr(args, k, None)) is not None
+    }
+    if search_kwargs:
+        return show_search(**search_kwargs)
+
     # no command given -> show help and use a non-zero exit
-    build_parser().print_help(stderr)
+    build_parser(prog="kcc").print_help(stderr)
     return 2
 
 
