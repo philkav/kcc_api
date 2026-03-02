@@ -6,6 +6,7 @@ USAGE:
 
 """
 
+from . import plan
 from .plan import KCCPlan, Search
 from sys import argv, stderr
 import json
@@ -36,13 +37,14 @@ def build_parser(prog) -> argparse.ArgumentParser:
     p.add_argument("-a", "--address", metavar="QUERY", help="Search by Address")
     p.add_argument("-d", "--description", metavar="QUERY", help="Search by Description")
     p.add_argument("-p", "--plan", metavar="QUERY", help="Search by Plan ID")
+    p.add_argument("-v", "--verbose", action="store_true", help="Print each request URL as it is made")
     return p
 
 
 def main(argv=None) -> int | None:
     parser = build_parser(prog="kcc")
     args = parser.parse_args(argv)
-
+    plan.VERBOSE = args.verbose
 
     # plan takes priority if provided
     if args.plan is not None:

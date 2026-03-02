@@ -1,8 +1,12 @@
 #!/usr/bin/python3
 import requests
+import time  # used by make_request() retry logic
 from datetime import datetime
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin
+
+
+VERBOSE = False
 
 
 class KCCURL:
@@ -33,8 +37,20 @@ class Endpoint:
         ).prepare()
 
     def make_request(self) -> requests.Response:
+        prepared = self.request
+        if VERBOSE:
+            print(f"[{self.method}] {prepared.url}", flush=True)
         with requests.Session() as s:
-            return s.send(self.request)
+            response = s.send(prepared)
+            while response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", 2))
+                if VERBOSE:
+                    print(f"[429] Rate limited, retrying in {retry_after}s...", flush=True)
+                time.sleep(retry_after)
+                response = s.send(prepared)
+        if VERBOSE:
+            print(f"[{response.status_code}] {prepared.url}", flush=True)
+        return response
 
     def __repr__(self):
         return f"{self.__class__.__name__}(url={self.url!r}, method={self.method!r})"
@@ -47,7 +63,7 @@ class Endpoint:
 
 
 class AddressSearchEndpoint(Endpoint):
-    def __init__(self, name: str, address: str, description: str):
+    def __init__(self, name: str, address: str, description: str, start_date: datetime | None = None, end_date: datetime | None = None):
         self.url = KCCURL.address_search
         super().__init__(
             self.url,
@@ -55,8 +71,8 @@ class AddressSearchEndpoint(Endpoint):
                 "name": self.sanitize(name),
                 "address": self.sanitize(address),
                 "devDesc": self.sanitize(description),
-                "startDate": "",
-                "endDate": "",
+                "startDate": start_date.strftime("%d/%m/%Y") if start_date else "",
+                "endDate": end_date.strftime("%d/%m/%Y") if end_date else "",
             },
         )
 
@@ -145,6 +161,14 @@ class Attachment:
             return self._datadict[k]
         raise AttributeError(k)
 
+    def to_json(self):
+        return {
+            "type": self.type.get("text"),
+            "comment": self.comment.get("text"),
+            "size": self.files.get("text"),
+            "link": self.link,
+        }
+
     def __repr__(self):
         return f"Attachment({self._datadict!r})"
 
@@ -153,15 +177,17 @@ class Attachment:
 
 
 class KCCPlan:
-    def __init__(self, plan_id: int):
+    def __init__(self, plan_id: int, data: dict | None = None):
         self.plan_id = plan_id
-        self.endpoint = PlanningFileEndpoint(self.plan_id)
-        self.request = self.endpoint.make_request()
         self.attachments = None
-        if self.request.ok:
-            self.data = self.request.json()
+        if data is not None:
+            if isinstance(data.get("DevelopmentAddress"), str):
+                data["DevelopmentAddress"] = [data["DevelopmentAddress"]]
+            self.data = data
         else:
-            self.data = None
+            self.endpoint = PlanningFileEndpoint(self.plan_id)
+            request = self.endpoint.make_request()
+            self.data = request.json() if request.ok else None
 
     def __getattr__(self, k):
         if self.data is not None and k in self.data:
@@ -170,6 +196,12 @@ class KCCPlan:
 
     def __bool__(self):
         return self.data is not None
+
+    @property
+    def date_received(self) -> datetime | None:
+        if self.data is None:
+            return None
+        return datetime.strptime(self.DateReceived, "%d/%m/%Y")
 
     def __eq__(self, other):
         if isinstance(other, KCCPlan):
@@ -199,12 +231,12 @@ class KCCPlan:
             return None
 
     def to_json(self):
-        return {"data": self.data, "attachments": [ x for x in self.attachments ]}
+        return {"data": self.data, "attachments": [x.to_json() for x in self.attachments] if self.attachments else []}
 
 
 class Search:
-    def __init__(self, name: str = None, address: str = None, description: str = None):
-        self.endpoint = AddressSearchEndpoint(name, address, description)
+    def __init__(self, name: str = None, address: str = None, description: str = None, start_date: datetime | None = None, end_date: datetime | None = None):
+        self.endpoint = AddressSearchEndpoint(name, address, description, start_date, end_date)
         self._data = []
         self._fetch()
 
@@ -220,6 +252,9 @@ class Search:
     def __contains__(self, item):
         return item in self._data
 
+    def to_json(self):
+        return [p.to_json() for p in self._data]
+
     def __repr__(self):
         return f"Search({self._data!r})"
 
@@ -227,11 +262,8 @@ class Search:
         return f"<Search: {len(self._data)} result(s)>"
 
     def _fetch(self):
-        """
-        This can be a little bit slow as it is fetching the data on the KCC server.
-        It's a single request from our point of view as the client
-        """
         request = self.endpoint.make_request()
-        self._data = [KCCPlan(p["FileNumber"]) for p in request.json()]
-        self._data.sort(key=lambda obj: datetime.strptime(obj.DateReceived, "%d/%m/%Y"))
+        results = request.json()
+        self._data = [KCCPlan(p["FileNumber"], data=p) for p in results]
+        self._data.sort(key=lambda obj: obj.date_received or datetime.min)
 
