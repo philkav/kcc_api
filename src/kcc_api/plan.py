@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import logging
 import requests
 import time  # used by make_request() retry logic
 from datetime import datetime
@@ -6,7 +7,7 @@ from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin
 
 
-VERBOSE = False
+logger = logging.getLogger(__name__)
 
 
 class KCCURL:
@@ -38,18 +39,15 @@ class Endpoint:
 
     def make_request(self) -> requests.Response:
         prepared = self.request
-        if VERBOSE:
-            print(f"[{self.method}] {prepared.url}", flush=True)
+        logger.debug("[%s] %s", self.method, prepared.url)
         with requests.Session() as s:
             response = s.send(prepared)
             while response.status_code == 429:
                 retry_after = int(response.headers.get("Retry-After", 2))
-                if VERBOSE:
-                    print(f"[429] Rate limited, retrying in {retry_after}s...", flush=True)
+                logger.debug("[429] Rate limited, retrying in %ss...", retry_after)
                 time.sleep(retry_after)
                 response = s.send(prepared)
-        if VERBOSE:
-            print(f"[{response.status_code}] {prepared.url}", flush=True)
+        logger.debug("[%s] %s", response.status_code, prepared.url)
         return response
 
     def __repr__(self):
@@ -58,12 +56,12 @@ class Endpoint:
     def __str__(self):
         return f"<{self.__class__.__name__}: [{self.method}] {self.url}>"
 
-    def sanitize(self, item: str):
+    def sanitize(self, item: str | None):
         return item.replace(' ', '+') if item else ""
 
 
 class AddressSearchEndpoint(Endpoint):
-    def __init__(self, name: str, address: str, description: str, start_date: datetime | None = None, end_date: datetime | None = None):
+    def __init__(self, name: str | None, address: str | None, description: str | None, start_date: datetime | None = None, end_date: datetime | None = None):
         self.url = KCCURL.address_search
         super().__init__(
             self.url,
@@ -123,7 +121,7 @@ class AttachmentHTMLParser:
 
     def _parsehtml(self, content: str):
         soup = bs(content, features="html.parser")
-        headers = ["type", "comment", "files", "size", "jpeg", "djvu"]
+        headers = ["comment", "num_files", "filesize", "size", "jpeg", "djvu"]
         data = []
         for doc in soup.find(id="DocumentsDG").find_all("tr"):
             datablock = doc.find_all(
@@ -163,9 +161,9 @@ class Attachment:
 
     def to_json(self):
         return {
-            "type": self.type.get("text"),
             "comment": self.comment.get("text"),
-            "size": self.files.get("text"),
+            "num_files": self.num_files.get("text"),
+            "filesize": self.filesize.get("text"),
             "link": self.link,
         }
 
@@ -173,7 +171,7 @@ class Attachment:
         return f"Attachment({self._datadict!r})"
 
     def __str__(self):
-        return f"<Attachment: [{self.type.get('text', 'None')}: {self.comment.get('text', 'None')}] ({self.link})>"
+        return f"<Attachment: [{self.comment.get('text', 'None')} ({self.num_files.get('text', 'None')} files)] ({self.link})>"
 
 
 class KCCPlan:
@@ -227,8 +225,7 @@ class KCCPlan:
             self.attachments = AttachmentHTMLParser(raw_request_data)
             return True
         else:
-            print(f"No attachments found for plan {str(self.plan_id)}")
-            return None
+            return False
 
     def to_json(self):
         return {"data": self.data, "attachments": [x.to_json() for x in self.attachments] if self.attachments else []}
