@@ -19,12 +19,12 @@ class KCCURL:
 
 class Endpoint:
     def __init__(
-        self, url: str, method: str = "GET", headers: dict = {}, params: dict = {}
+        self, url: str, method: str = "GET", headers: dict | None = None, params: dict | None = None
     ):
         self.url = url
         self.method = method
-        self.headers = headers
-        self.params = params
+        self.headers = headers or {}
+        self.params = params or {}
 
     @property
     def request(self) -> requests.PreparedRequest:
@@ -35,6 +35,12 @@ class Endpoint:
     def make_request(self) -> requests.Response:
         with requests.Session() as s:
             return s.send(self.request)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(url={self.url!r}, method={self.method!r})"
+
+    def __str__(self):
+        return f"<{self.__class__.__name__}: [{self.method}] {self.url}>"
 
     def sanitize(self, item: str):
         return item.replace(' ', '+') if item else ""
@@ -82,6 +88,18 @@ class AttachmentHTMLParser:
     def __iter__(self):
         return iter(self._data)
 
+    def __getitem__(self, index):
+        return self._data[index]
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return f"AttachmentHTMLParser({self._data!r})"
+
+    def __str__(self):
+        return f"<AttachmentHTMLParser: {len(self._data)} attachment(s)>"
+
     def extract_text_and_link(self, block: str):
         text = block.get_text()
         url = block.a["href"] if block.a else None
@@ -111,7 +129,7 @@ class Attachment:
     @property
     def link(self):
         for media in ["djvu", "jpeg"]:
-            if media in list(self):
+            if media in self:
                 self._link = getattr(self, media).get("url", None)
                 return urljoin(self.base_url, self._link) if self._link else None
         return None
@@ -119,10 +137,16 @@ class Attachment:
     def __iter__(self):
         return iter(self._datadict.keys())
 
+    def __contains__(self, k):
+        return k in self._datadict
+
     def __getattr__(self, k):
-        if k in self._datadict.keys():
-            return self._datadict.get(k)
-        raise KeyError
+        if k in self._datadict:
+            return self._datadict[k]
+        raise AttributeError(k)
+
+    def __repr__(self):
+        return f"Attachment({self._datadict!r})"
 
     def __str__(self):
         return f"<Attachment: [{self.type.get('text', 'None')}: {self.comment.get('text', 'None')}] ({self.link})>"
@@ -140,9 +164,25 @@ class KCCPlan:
             self.data = None
 
     def __getattr__(self, k):
-        if k in self.data:
+        if self.data is not None and k in self.data:
             return self.data[k]
-        raise KeyError
+        raise AttributeError(k)
+
+    def __bool__(self):
+        return self.data is not None
+
+    def __eq__(self, other):
+        if isinstance(other, KCCPlan):
+            return self.plan_id == other.plan_id
+        if isinstance(other, int):
+            return self.plan_id == other
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.plan_id)
+
+    def __repr__(self):
+        return f"KCCPlan(plan_id={self.plan_id!r})"
 
     def __str__(self):
         return f"<KCCPlan: ({self.DateReceived}) [{self.data.get('FileNumber')}] {' '.join(self.DevelopmentAddress).strip()}>"
@@ -165,7 +205,7 @@ class KCCPlan:
 class Search:
     def __init__(self, name: str = None, address: str = None, description: str = None):
         self.endpoint = AddressSearchEndpoint(name, address, description)
-        self._data = None
+        self._data = []
         self._fetch()
 
     def __iter__(self):
@@ -173,6 +213,18 @@ class Search:
 
     def __len__(self):
         return len(self._data)
+
+    def __getitem__(self, index):
+        return self._data[index]
+
+    def __contains__(self, item):
+        return item in self._data
+
+    def __repr__(self):
+        return f"Search({self._data!r})"
+
+    def __str__(self):
+        return f"<Search: {len(self._data)} result(s)>"
 
     def _fetch(self):
         """
