@@ -8,6 +8,7 @@ USAGE:
 
 import logging
 import argparse
+import os
 from datetime import datetime
 from sys import argv, stderr
 
@@ -54,7 +55,7 @@ def show_search(address=None, name=None, description=None, start_date=None, end_
     console.print(table)
 
 
-def show_plan(plan_id):
+def show_plan(plan_id, download=None, download_dir="."):
     p = KCCPlan(int(plan_id))
 
     if not p:
@@ -78,13 +79,15 @@ def show_plan(plan_id):
 
     if p.attachments:
         att_table = Table(show_header=True, header_style="bold cyan", title="Attachments")
+        att_table.add_column("#", width=4, no_wrap=True)
         att_table.add_column("Comment", width=50, no_wrap=True)
         att_table.add_column("# Files", no_wrap=True)
         att_table.add_column("Size", width=10, no_wrap=True)
         att_table.add_column("Link", no_wrap=True)
 
-        for a in p.attachments:
+        for i, a in enumerate(p.attachments, start=1):
             att_table.add_row(
+                str(i),
                 a.comment.get("text", ""),
                 a.num_files.get("text", ""),
                 a.filesize.get("text", ""),
@@ -93,6 +96,32 @@ def show_plan(plan_id):
         console.print(att_table)
     else:
         console.print("[yellow]No attachments found for this plan.[/yellow]")
+
+    if download is not None:
+        if not p.attachments:
+            console.print("[yellow]No attachments to download.[/yellow]")
+            return
+
+        if download == "all":
+            targets = list(enumerate(p.attachments, start=1))
+        else:
+            try:
+                idx = int(download)
+            except ValueError:
+                console.print(f"[red]Invalid --download value: {download!r}. Use an attachment index or 'all'.[/red]")
+                return
+            if not 1 <= idx <= len(p.attachments):
+                console.print(f"[red]No attachment with index {idx}.[/red]")
+                return
+            targets = [(idx, p.attachments[idx - 1])]
+
+        os.makedirs(download_dir, exist_ok=True)
+        for i, a in targets:
+            try:
+                dest = a.download(download_dir)
+                console.print(f"[green]Downloaded #{i} -> {dest}[/green]")
+            except Exception as e:
+                console.print(f"[red]Failed to download #{i}: {e}[/red]")
 
 
 def build_parser(prog) -> argparse.ArgumentParser:
@@ -103,6 +132,8 @@ def build_parser(prog) -> argparse.ArgumentParser:
     p.add_argument("-p", "--plan", metavar="QUERY", help="Search by Plan ID")
     p.add_argument("--start-date", metavar="DD/MM/YYYY", type=parse_date, help="Only include plans received on or after this date")
     p.add_argument("--end-date", metavar="DD/MM/YYYY", type=parse_date, help="Only include plans received on or before this date")
+    p.add_argument("--download", metavar="INDEX|all", help="Download an attachment by its # from the plan's attachment table (use with -p); pass 'all' to download every attachment")
+    p.add_argument("--download-dir", metavar="PATH", default=".", help="Directory to save downloaded attachment(s) into (default: current directory)")
     p.add_argument("-v", "--verbose", action="store_true", help="Print each request URL as it is made")
     return p
 
@@ -116,9 +147,12 @@ def main(argv=None) -> int | None:
         handlers=[RichHandler(show_path=False, show_time=False)],
     )
 
+    if args.download is not None and args.plan is None:
+        parser.error("--download requires -p/--plan")
+
     # plan takes priority if provided
     if args.plan is not None:
-        return show_plan(args.plan)
+        return show_plan(args.plan, download=args.download, download_dir=args.download_dir)
 
     # gather any provided search fields into one call
     search_kwargs = {

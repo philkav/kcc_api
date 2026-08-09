@@ -1,10 +1,11 @@
 #!/usr/bin/python3
 import logging
+import os
 import requests
 import time  # used by make_request() retry logic
 from datetime import datetime
 from bs4 import BeautifulSoup as bs
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,25 @@ class Attachment:
             "filesize": self.filesize.get("text"),
             "link": self.link,
         }
+
+    def download(self, path: str = ".", chunk_size: int = 8192) -> str:
+        url = self.link
+        if url is None:
+            raise ValueError("Attachment has no downloadable file")
+
+        headers = {"User-Agent": "Mozilla/5.0"}
+        with requests.Session() as s:
+            with s.get(url, headers=headers, stream=True) as response:
+                response.raise_for_status()
+                dest = path
+                if os.path.isdir(dest):
+                    filename = os.path.basename(urlsplit(url).path) or f"attachment-{id(self)}"
+                    dest = os.path.join(dest, filename)
+                with open(dest, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if chunk:
+                            f.write(chunk)
+        return dest
 
     def __repr__(self):
         return f"Attachment({self._datadict!r})"
