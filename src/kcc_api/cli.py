@@ -8,6 +8,7 @@ USAGE:
 
 import logging
 import argparse
+from datetime import datetime
 from sys import argv, stderr
 
 from rich.console import Console
@@ -20,8 +21,15 @@ from .plan import KCCPlan, Search
 console = Console()
 
 
-def show_search(address=None, name=None, description=None):
-    results = Search(address=address, name=name, description=description)
+def parse_date(value: str) -> datetime:
+    try:
+        return datetime.strptime(value, "%d/%m/%Y")
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid date {value!r}, expected format DD/MM/YYYY")
+
+
+def show_search(address=None, name=None, description=None, start_date=None, end_date=None):
+    results = Search(address=address, name=name, description=description, start_date=start_date, end_date=end_date)
 
     if not results:
         console.print("[yellow]No results found.[/yellow]")
@@ -93,6 +101,8 @@ def build_parser(prog) -> argparse.ArgumentParser:
     p.add_argument("-a", "--address", metavar="QUERY", help="Search by Address")
     p.add_argument("-d", "--description", metavar="QUERY", help="Search by Description")
     p.add_argument("-p", "--plan", metavar="QUERY", help="Search by Plan ID")
+    p.add_argument("--start-date", metavar="DD/MM/YYYY", type=parse_date, help="Only include plans received on or after this date")
+    p.add_argument("--end-date", metavar="DD/MM/YYYY", type=parse_date, help="Only include plans received on or before this date")
     p.add_argument("-v", "--verbose", action="store_true", help="Print each request URL as it is made")
     return p
 
@@ -112,7 +122,7 @@ def main(argv=None) -> int | None:
 
     # gather any provided search fields into one call
     search_kwargs = {
-        k: v for k in ("address", "name", "description")
+        k: v for k in ("address", "name", "description", "start_date", "end_date")
         if (v := getattr(args, k, None)) is not None
     }
     if search_kwargs:
