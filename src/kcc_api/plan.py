@@ -70,8 +70,8 @@ class AddressSearchEndpoint(Endpoint):
                 "name": self.sanitize(name),
                 "address": self.sanitize(address),
                 "devDesc": self.sanitize(description),
-                "startDate": start_date.strftime("%d/%m/%Y") if start_date else "",
-                "endDate": end_date.strftime("%d/%m/%Y") if end_date else "",
+                "startDate": start_date.strftime("%Y-%m-%d") if start_date else "",
+                "endDate": end_date.strftime("%Y-%m-%d") if end_date else "",
             },
         )
 
