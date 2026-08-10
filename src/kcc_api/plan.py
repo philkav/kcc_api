@@ -38,16 +38,20 @@ class Endpoint:
             method=self.method, url=self.url, headers=self.headers, params=self.params
         ).prepare()
 
-    def make_request(self) -> requests.Response:
+    def make_request(self, session: requests.Session | None = None) -> requests.Response:
         prepared = self.request
         logger.debug("[%s] %s", self.method, prepared.url)
-        with requests.Session() as s:
+        s = session or requests.Session()
+        try:
             response = s.send(prepared)
             while response.status_code == 429:
                 retry_after = int(response.headers.get("Retry-After", 2))
                 logger.debug("[429] Rate limited, retrying in %ss...", retry_after)
                 time.sleep(retry_after)
                 response = s.send(prepared)
+        finally:
+            if session is None:
+                s.close()
         logger.debug("[%s] %s", response.status_code, prepared.url)
         return response
 
@@ -97,7 +101,8 @@ class PlanningFileEndpoint(Endpoint):
 
 
 class AttachmentHTMLParser:
-    def __init__(self, content: str):
+    def __init__(self, content: str, session: requests.Session | None = None):
+        self._session = session
         self._data = self._parsehtml(content)
 
     def __iter__(self):
@@ -132,13 +137,36 @@ class AttachmentHTMLParser:
                 d = dict(
                     zip(headers, [self.extract_text_and_link(x) for x in datablock[1:]])
                 )
-                data.append(Attachment(d))
+                data.append(Attachment(d, session=self._session))
         return data
 
 
+def resolve_attachment_file_url(session: requests.Session, view_files_url: str) -> str | None:
+    """Follow the ViewFiles.aspx -> ViewPdf.aspx redirect chain to the real file path.
+
+    Requires a session that has already visited listFiles.aspx for the same plan,
+    since the server resolves docid -> filename via server-side session state.
+    """
+    response = session.get(view_files_url, headers={"Referer": KCCURL.attachment_search})
+    response.raise_for_status()
+    iframe = bs(response.text, features="html.parser").find("iframe", id="frame1")
+    if not iframe or not iframe.get("src"):
+        return None
+
+    viewpdf_url = urljoin(view_files_url, iframe["src"])
+    response = session.get(viewpdf_url, headers={"Referer": view_files_url})
+    response.raise_for_status()
+    link = bs(response.text, features="html.parser").find("a", href=True)
+    if not link:
+        return None
+
+    return urljoin(KCCURL.attachment_filedir, link["href"].replace("\\", "/"))
+
+
 class Attachment:
-    def __init__(self, datadict: dict):
+    def __init__(self, datadict: dict, session: requests.Session | None = None):
         self._datadict = datadict
+        self._session = session
         self.base_url = KCCURL.attachment_filedir
 
     @property
@@ -169,22 +197,24 @@ class Attachment:
         }
 
     def download(self, path: str = ".", chunk_size: int = 8192) -> str:
-        url = self.link
-        if url is None:
+        view_files_url = self.link
+        if view_files_url is None:
             raise ValueError("Attachment has no downloadable file")
 
+        session = self._session or requests.Session()
+        url = resolve_attachment_file_url(session, view_files_url) or view_files_url
+
         headers = {"User-Agent": "Mozilla/5.0"}
-        with requests.Session() as s:
-            with s.get(url, headers=headers, stream=True) as response:
-                response.raise_for_status()
-                dest = path
-                if os.path.isdir(dest):
-                    filename = os.path.basename(urlsplit(url).path) or f"attachment-{id(self)}"
-                    dest = os.path.join(dest, filename)
-                with open(dest, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=chunk_size):
-                        if chunk:
-                            f.write(chunk)
+        with session.get(url, headers=headers, stream=True) as response:
+            response.raise_for_status()
+            dest = path
+            if os.path.isdir(dest):
+                filename = os.path.basename(urlsplit(url).path) or f"attachment-{id(self)}"
+                dest = os.path.join(dest, filename)
+            with open(dest, "wb") as f:
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        f.write(chunk)
         return dest
 
     def __repr__(self):
@@ -238,11 +268,12 @@ class KCCPlan:
         return f"<KCCPlan: ({self.DateReceived}) [{self.data.get('FileNumber')}] {' '.join(self.DevelopmentAddress).strip()}>"
 
     def fetch_attachments(self):
+        session = requests.Session()
         plan_attachments_endpoint = PlanningAttachmentsEndpoint(self.plan_id)
-        plan_attachments_request = plan_attachments_endpoint.make_request()
+        plan_attachments_request = plan_attachments_endpoint.make_request(session=session)
         if plan_attachments_request.ok:
             raw_request_data = plan_attachments_request.text
-            self.attachments = AttachmentHTMLParser(raw_request_data)
+            self.attachments = AttachmentHTMLParser(raw_request_data, session=session)
             return True
         else:
             return False
